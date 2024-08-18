@@ -1,10 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
 #include "client.h"
+#include "key.h"
+#include "utils.h"
 #include "config.h"
 
 #define EASYWM_LOG_ERROR(msg, ...) \
@@ -25,23 +28,86 @@
 
 static int current_workspace = 1;
 
+static Window create_bar(Display *display) {
+	int screen = DefaultScreen(display);
+	int sw = XDisplayWidth(display, screen);
+
+	Window bar = XCreateSimpleWindow(display,
+					 DefaultRootWindow(display),
+					 20, 10,
+					 sw - 40, 30,
+					 2,
+					 BlackPixel(display, screen),
+					 WhitePixel(display, screen));
+
+	XMapWindow(display, bar);
+
+	return bar;
+}
+
+static void focus_window(Display *display, client_t *c, int focus) {
+	assert(c != NULL);
+
+	if (c->hide) {
+		return;
+	}
+
+	XColor color;
+	XColor border_color;
+	Colormap colormap;
+
+	colormap = DefaultColormap(display, 0);
+	XParseColor(display, colormap, focus ? FRAME_FOCUS_COLOR : FRAME_COLOR, &color);
+	XAllocColor(display, colormap, &color);
+
+	XParseColor(display, colormap, focus ? FRAME_FOCUS_BORDER_COLOR : FRAME_BORDER_COLOR, &border_color);
+	XAllocColor(display, colormap, &border_color);
+
+	// 设置窗口边框颜色
+	XSetWindowBorder(display, c->frame, border_color.pixel);
+	// 设置窗口背景颜色
+	XSetWindowBackground(display, c->frame, color.pixel);
+	XClearWindow(display, c->frame);
+
+	if (focus) {
+		c->focus = 1;
+
+		XSetInputFocus(display, c->w,
+			RevertToParent, CurrentTime);
+
+		XRaiseWindow(display, c->frame);
+	} else {
+		c->focus = 0;
+	}
+}
 
 static Window create_window_frame_for_win(Display *display, Window w,
 					  XWindowAttributes wa) {
+	XColor color;
+	XColor border_color;
+	Colormap colormap;
+
+	colormap = DefaultColormap(display, 0);
+	XParseColor(display, colormap, FRAME_FOCUS_COLOR, &color);
+	XAllocColor(display, colormap, &color);
+
+	XParseColor(display, colormap, FRAME_FOCUS_BORDER_COLOR, &border_color);
+	XAllocColor(display, colormap, &border_color);
+
 	Window frame = XCreateSimpleWindow(display,
 					   DefaultRootWindow(display),
 					   wa.x, wa.y,
 					   wa.width, wa.height + TITLE_BAR_HEIGHT,
 					   BORDER,
-					   BlackPixel(display,
-						      DefaultScreen(display)),
-					   BlackPixel(display,
-						      DefaultScreen(display)));
+					   border_color.pixel,
+		                           color.pixel);
 	XSelectInput(display, frame,
 		     SubstructureRedirectMask |
 		     SubstructureNotifyMask |
 		     PointerMotionMask |
 		     ButtonPressMask |
+		     EnterWindowMask |
+		     LeaveWindowMask |
 		     ButtonReleaseMask);
 
 	XReparentWindow(display, w, frame, 0, TITLE_BAR_HEIGHT);
@@ -62,11 +128,17 @@ static void handle_maprequest(Display *display, XMapRequestEvent *e,
 		return;
 	}
 
+	for (client_node_t *it = list; it != NULL; it = it->next) {
+		if (it->c) {
+			focus_window(display, it->c, 0);
+		}
+	}
+
 	XWindowAttributes wa;
 	XGetWindowAttributes(display, w, &wa);
 
-	EASYWM_LOG_DEBUG("wa.x: %d, wa.y: %d, wa.width: %d, wa.height: %d",
-			 wa.x, wa.y, wa.width, wa.height);
+	EASYWM_LOG_DEBUG("wa.x: %d, wa.y: %d, wa.width: %d, wa.height: %d, wa.root: %d, wa.override_redirect: %d",
+			 wa.x, wa.y, wa.width, wa.height, wa.root, wa.override_redirect);
 
 	Window frame = create_window_frame_for_win(display, w, wa);
 
@@ -76,13 +148,102 @@ static void handle_maprequest(Display *display, XMapRequestEvent *e,
 
 	easywm_client_list_append(list, c);
 
-	XSelectInput(display, w, EnterWindowMask);
+	XSelectInput(display, w, EnterWindowMask | LeaveWindowMask);
 
 	XMapWindow(display, w);
 
-	XSetInputFocus(display, w, RevertToParent, CurrentTime);
+	XSetInputFocus(display, w, RevertToPointerRoot, CurrentTime);
 
 	XSync(display, False);
+}
+
+static void handle_configurerequest(Display *display, XConfigureRequestEvent e,
+				    client_node_t *list) {
+	Window w = e.window;
+	XWindowChanges wc;
+	unsigned int value_mask = 0;
+	client_node_t *node = easywm_client_has_window(list, w);
+
+	if (node) {
+		client_t *c = node->c;
+		if (c->frame) {
+			// 处理位置和大小的请求
+			if (e.value_mask & CWX) {
+				wc.x = 0;
+				value_mask |= CWX;
+			}
+			if (e.value_mask & CWY) {
+				wc.y = TITLE_BAR_HEIGHT;
+				value_mask |= CWY;
+			}
+			if (e.value_mask & CWWidth) {
+				wc.width = e.width;
+				value_mask |= CWWidth;
+			}
+			if (e.value_mask & CWHeight) {
+				wc.height = e.height;
+				value_mask |= CWHeight;
+			}
+			if (e.value_mask & CWBorderWidth) {
+				wc.border_width = e.border_width;
+				value_mask |= CWBorderWidth;
+			}
+
+			XResizeWindow(
+				display,
+				c->frame,
+				e.width,
+				e.height + TITLE_BAR_HEIGHT);
+		}
+	} else {
+		// 处理位置和大小的请求
+		if (e.value_mask & CWX) {
+			wc.x = e.x;
+			value_mask |= CWX;
+		}
+		if (e.value_mask & CWY) {
+			wc.y = e.y;
+			value_mask |= CWY;
+		}
+		if (e.value_mask & CWWidth) {
+			wc.width = e.width;
+			value_mask |= CWWidth;
+		}
+		if (e.value_mask & CWHeight) {
+			wc.height = e.height;
+			value_mask |= CWHeight;
+		}
+		if (e.value_mask & CWBorderWidth) {
+			wc.border_width = e.border_width;
+			value_mask |= CWBorderWidth;
+		}
+	}
+	XConfigureWindow(display, w, value_mask, &wc);
+
+	EASYWM_LOG_DEBUG("wc.x: %d, wc.y: %d, wc.width: %d, wc.height: %d",
+			wc.x, wc.y, wc.width, wc.height);
+
+	// 发送 ConfigureNotify 事件
+	XEvent configure_notify;
+	configure_notify.type = ConfigureNotify;
+	configure_notify.xconfigure.window = w;
+	configure_notify.xconfigure.x = wc.x;
+	configure_notify.xconfigure.y = wc.y;
+	configure_notify.xconfigure.width = wc.width;
+	configure_notify.xconfigure.height = wc.height;
+	configure_notify.xconfigure.border_width = wc.border_width;
+	configure_notify.xconfigure.above = None;
+	configure_notify.xconfigure.override_redirect = False;
+
+	XSendEvent(display, w, False, StructureNotifyMask,
+		&configure_notify);
+
+	/* XMoveWindow(display, w, */
+	/* 	    sw / 2 - e.width / 2, */
+	/* 	    sh / 2 - e.height / 2); */
+	XSync(display, False);
+
+	EASYWM_LOG_DEBUG("Called :)");
 }
 
 int main(int argc, char *argv[]) {
@@ -112,7 +273,20 @@ int main(int argc, char *argv[]) {
 	XSelectInput(display, root,
 		     SubstructureRedirectMask |
 		     PointerMotionMask |
+		     KeyPressMask |
+		     KeyReleaseMask |
 		     SubstructureNotifyMask);
+
+	XUngrabKey(display, AnyKey, AnyModifier, root);
+	for (int i = 0; i < UTILS_ARRAY_LEN(shortcuts); i++) {
+		KeyCode code = XKeysymToKeycode(display, shortcuts[i].key);
+		if (code) {
+			XGrabKey(display, code, shortcuts[i].modifer, root,
+				True, GrabModeAsync, GrabModeAsync);
+		}
+	}
+
+	create_bar(display);
 
 	XSync(display, False);
 
@@ -140,6 +314,8 @@ int main(int argc, char *argv[]) {
 				XDestroyWindow(display, node->c->frame);
 				XSync(display, False);
 				easywm_client_list_remove(list, node);
+				EASYWM_LOG_DEBUG("After remove, List size: %d",
+						 easywm_client_list_size(list));
 			}
 			break;
 		}
@@ -172,12 +348,41 @@ int main(int argc, char *argv[]) {
 			client_node_t *node = easywm_client_has_window(list,
 								       e.window);
 
-			if (node && node->c) {
-				XSetInputFocus(display, node->c->w,
-					       RevertToParent, CurrentTime);
-				XRaiseWindow(display, e.window);
+			EASYWM_LOG_DEBUG("List size: %d",
+					 easywm_client_list_size(list));
+			for (client_node_t *it = list; it != NULL; it = it->next) {
+				if (it->c) {
+					if (it == node) {
+						focus_window(display, node->c, 1);
 
-				XSync(display, False);
+						XSync(display, False);
+					} else {
+						focus_window(display, it->c, 0);
+
+						XSync(display, False);
+					}
+				}
+			}
+
+			break;
+		}
+		case LeaveNotify: {
+			/* XLeaveWindowEvent e = event.xcrossing; */
+			/* client_node_t *node = easywm_client_has_window(list, */
+			/* 					       e.window); */
+			/* if (node && node->c) { */
+			/* 	XSetInputFocus(display, root, RevertToParent, CurrentTime); */
+
+			/* 	XSync(display, False); */
+			/* } */
+			break;
+		}
+		case UnmapNotify: {
+			XUnmapEvent e = event.xunmap;
+			client_node_t *node = easywm_client_has_window(list,
+								       e.window);
+			if (node && node->c) {
+				node->c->hide = 1;
 			}
 			break;
 		}
@@ -218,91 +423,7 @@ int main(int argc, char *argv[]) {
 		}
 		case ConfigureRequest: {
 			XConfigureRequestEvent e = event.xconfigurerequest;
-			Window w = e.window;
-			XWindowChanges wc;
-			unsigned int value_mask = 0;
-			client_node_t *node = easywm_client_has_window(list, w);
-
-			if (node) {
-				client_t *c = node->c;
-				if (c->frame) {
-					// 处理位置和大小的请求
-					if (e.value_mask & CWX) {
-						wc.x = 0;
-						value_mask |= CWX;
-					}
-					if (e.value_mask & CWY) {
-						wc.y = TITLE_BAR_HEIGHT;
-						value_mask |= CWY;
-					}
-					if (e.value_mask & CWWidth) {
-						wc.width = e.width;
-						value_mask |= CWWidth;
-					}
-					if (e.value_mask & CWHeight) {
-						wc.height = e.height;
-						value_mask |= CWHeight;
-					}
-					if (e.value_mask & CWBorderWidth) {
-						wc.border_width = e.border_width;
-						value_mask |= CWBorderWidth;
-					}
-
-					XResizeWindow(
-						display,
-						c->frame,
-						e.width,
-						e.height + TITLE_BAR_HEIGHT);
-				}
-			} else {
-				// 处理位置和大小的请求
-				if (e.value_mask & CWX) {
-					wc.x = e.x;
-					value_mask |= CWX;
-				}
-				if (e.value_mask & CWY) {
-					wc.y = e.y;
-					value_mask |= CWY;
-				}
-				if (e.value_mask & CWWidth) {
-					wc.width = e.width;
-					value_mask |= CWWidth;
-				}
-				if (e.value_mask & CWHeight) {
-					wc.height = e.height;
-					value_mask |= CWHeight;
-				}
-				if (e.value_mask & CWBorderWidth) {
-					wc.border_width = e.border_width;
-					value_mask |= CWBorderWidth;
-				}
-			}
-			XConfigureWindow(display, w, value_mask, &wc);
-
-			EASYWM_LOG_DEBUG("wc.x: %d, wc.y: %d, wc.width: %d, wc.height: %d",
-					wc.x, wc.y, wc.width, wc.height);
-
-			// 发送 ConfigureNotify 事件
-			XEvent configure_notify;
-			configure_notify.type = ConfigureNotify;
-			configure_notify.xconfigure.window = w;
-			configure_notify.xconfigure.x = wc.x;
-			configure_notify.xconfigure.y = wc.y;
-			configure_notify.xconfigure.width = wc.width;
-			configure_notify.xconfigure.height = wc.height;
-			configure_notify.xconfigure.border_width = wc.border_width;
-			configure_notify.xconfigure.above = None;
-			configure_notify.xconfigure.override_redirect = False;
-
-			XSendEvent(display, w, False, StructureNotifyMask,
-				&configure_notify);
-
-			/* XMoveWindow(display, w, */
-			/* 	    sw / 2 - e.width / 2, */
-			/* 	    sh / 2 - e.height / 2); */
-			XSync(display, False);
-
-			EASYWM_LOG_DEBUG("Called :)");
+			handle_configurerequest(display, e, list);
 			break;
 		}
 		case ButtonPress: {
@@ -314,8 +435,7 @@ int main(int argc, char *argv[]) {
 				mouse_move_start_x = e.x;
 				mouse_move_start_y = e.y;
 
-				XSetInputFocus(display, node->c->w,
-					       RevertToParent, CurrentTime);
+				focus_window(display, node->c, 1);
 			}
 
 			XRaiseWindow(display, e.window);
@@ -333,6 +453,25 @@ int main(int argc, char *argv[]) {
 				mouse_move_start_y = 0;
 			}
 
+			break;
+		}
+		case KeyRelease: {
+			XKeyReleasedEvent e = event.xkey;
+			for (int i = 0; i < UTILS_ARRAY_LEN(shortcuts); i++) {
+				KeySym keysym = XLookupKeysym(&e, 0);
+				if (shortcuts[i].key == keysym &&
+				    shortcuts[i].modifer == e.state) {
+					for (client_node_t *it = list; it != NULL; it = it->next) {
+						if (it && it->c && it->c->focus) {
+							XMoveResizeWindow(display, it->c->frame, 0, 0, 1920, 1080);
+							XMoveResizeWindow(display, it->c->w, 0, TITLE_BAR_HEIGHT, 1920, 1080 - TITLE_BAR_HEIGHT);
+
+							XSync(display, False);
+						}
+					}
+					break;
+				}
+			}
 			break;
 		}
 		default:

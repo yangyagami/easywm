@@ -1,5 +1,3 @@
-st &
-audiorelay &
-emacs &
+hmcl &
 
-exec ./easywm
+startxfce4

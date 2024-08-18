@@ -4,7 +4,7 @@ CC = gcc
 CFLAGS = -Wall -lX11 -O0 -g3 -fsanitize=address
 TARGET = easywm
 SRC = main.c client.c
-HEADER = client.h
+HEADER = client.h config.h key.h utils.h
 
 # 默认目标
 all: $(TARGET)

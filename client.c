@@ -65,7 +65,7 @@ void easywm_client_list_remove(client_node_t *list, client_node_t *node) {
 			if (tmp->c) {
 				easywm_client_destroy(tmp->c);
 			}
-			free(*it);
+			free(tmp);
 			*it = tmp_next;
 
 			return;
@@ -83,3 +83,11 @@ client_node_t *easywm_client_has_window(client_node_t *list, Window w) {
 	return NULL;
 }
 
+int easywm_client_list_size(client_node_t *list) {
+	int ret = 0;
+	for (client_node_t *it = list; it != NULL; it = it->next) {
+		ret++;
+	}
+
+	return ret - 1;
+}
