@@ -1,0 +1,8 @@
+* TODO 处理全屏时的位置和大小问题，应该计算上 border 的宽度。
+* TODO 工作区实现。
+* TODO 动态壁纸（一个 xlib 下的视频播放器）。
+* TODO 平铺布局？
+* TODO 一些自定义窗口不需要 frame，例如 hmcl 。
+* TODO BAR 的实现。
+* TODO 执行程序的功能（dwm 的 spawn）。
+* DONE 统一大小计算方法。

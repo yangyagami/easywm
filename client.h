@@ -8,12 +8,14 @@ struct client {
 	Window frame;
 	int moving;
 
+	// Contains frame
 	int x, y, width, height;
 
 	int workspace;
 
 	int hide;
 	int focus;
+	int max;
 };
 typedef struct client client_t;
 

@@ -8,7 +8,6 @@
 #include "client.h"
 #include "key.h"
 #include "utils.h"
-#include "config.h"
 
 #define EASYWM_LOG_ERROR(msg, ...) \
 	fprintf(stderr, "[%s][%s][%d] Error: "msg"\n", \
@@ -25,6 +24,10 @@
 #define EASYWM_LOG_WARN(msg, ...) \
 	fprintf(stdout, "[%s][%s][%d] Warn: "msg"\n", \
 		__FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);
+
+void toggle_max(int argc, char *argv[]);
+
+#include "config.h"
 
 static int current_workspace = 1;
 
@@ -81,8 +84,41 @@ static void focus_window(Display *display, client_t *c, int focus) {
 	}
 }
 
-static Window create_window_frame_for_win(Display *display, Window w,
-					  XWindowAttributes wa) {
+static void handle_maprequest(Display *display, XMapRequestEvent *e,
+			      client_node_t *list) {
+	Window w = e->window;
+
+	if (easywm_client_has_window(list, w)) {
+		EASYWM_LOG_DEBUG("Already has client!");
+		return;
+	}
+
+	for (client_node_t *it = list; it != NULL; it = it->next) {
+		if (it->c) {
+			focus_window(display, it->c, 0);
+		}
+	}
+
+	XSizeHints hints;
+	long supplied;
+
+	XGetWMNormalHints(display, w, &hints, &supplied);
+
+	EASYWM_LOG_DEBUG("width: %d, height: %d, min width: %d, min height: %d, max width: %d, max height: %d, base width: %d, base height: %d",
+			hints.width, hints.height,
+			hints.min_width, hints.min_height,
+			hints.max_width, hints.max_height,
+			hints.base_width, hints.base_height);
+
+	XWindowAttributes wa;
+	XGetWindowAttributes(display, w, &wa);
+
+	wa.width = MIN_WIDTH > hints.min_width ? MIN_WIDTH : hints.min_width;
+	wa.height = MIN_HEIGHT > hints.min_height ? MIN_HEIGHT : hints.min_height;
+
+	EASYWM_LOG_DEBUG("wa.x: %d, wa.y: %d, wa.width: %d, wa.height: %d, wa.root: %lu, wa.override_redirect: %d",
+			 wa.x, wa.y, wa.width, wa.height, wa.root, wa.override_redirect);
+
 	XColor color;
 	XColor border_color;
 	Colormap colormap;
@@ -94,10 +130,18 @@ static Window create_window_frame_for_win(Display *display, Window w,
 	XParseColor(display, colormap, FRAME_FOCUS_BORDER_COLOR, &border_color);
 	XAllocColor(display, colormap, &border_color);
 
+	int sw = XDisplayWidth(display, DefaultScreen(display));
+	int sh = XDisplayHeight(display, DefaultScreen(display));
+
+	int wx = (sw  - BORDER * 2) / 2 - wa.width / 2;
+	int wy = (sh - BORDER * 2) / 2 - (wa.height + TITLE_BAR_HEIGHT) / 2;
+	int ww = wa.width;
+	int wh = wa.height + TITLE_BAR_HEIGHT;
+
 	Window frame = XCreateSimpleWindow(display,
 					   DefaultRootWindow(display),
-					   wa.x, wa.y,
-					   wa.width, wa.height + TITLE_BAR_HEIGHT,
+					   wx, wy,
+					   ww, wh,
 					   BORDER,
 					   border_color.pixel,
 		                           color.pixel);
@@ -116,35 +160,8 @@ static Window create_window_frame_for_win(Display *display, Window w,
 
 	XMapWindow(display, frame);
 
-	return frame;
-}
-
-static void handle_maprequest(Display *display, XMapRequestEvent *e,
-			      client_node_t *list) {
-	Window w = e->window;
-
-	if (easywm_client_has_window(list, w)) {
-		EASYWM_LOG_DEBUG("Already has window");
-		return;
-	}
-
-	for (client_node_t *it = list; it != NULL; it = it->next) {
-		if (it->c) {
-			focus_window(display, it->c, 0);
-		}
-	}
-
-	XWindowAttributes wa;
-	XGetWindowAttributes(display, w, &wa);
-
-	EASYWM_LOG_DEBUG("wa.x: %d, wa.y: %d, wa.width: %d, wa.height: %d, wa.root: %d, wa.override_redirect: %d",
-			 wa.x, wa.y, wa.width, wa.height, wa.root, wa.override_redirect);
-
-	Window frame = create_window_frame_for_win(display, w, wa);
-
 	client_t *c = easywm_client_new(w, frame,
-					wa.x, wa.y, wa.width,
-					wa.height, current_workspace);
+					wx, wy, ww, wh, current_workspace);
 
 	easywm_client_list_append(list, c);
 
@@ -164,64 +181,52 @@ static void handle_configurerequest(Display *display, XConfigureRequestEvent e,
 	unsigned int value_mask = 0;
 	client_node_t *node = easywm_client_has_window(list, w);
 
+	// 处理位置和大小的请求
+	if (e.value_mask & CWX) {
+		wc.x = e.x;
+		value_mask |= CWX;
+	}
+	if (e.value_mask & CWY) {
+		wc.y = e.y;
+		value_mask |= CWY;
+	}
+	if (e.value_mask & CWWidth) {
+		wc.width = e.width;
+		value_mask |= CWWidth;
+	}
+	if (e.value_mask & CWHeight) {
+		wc.height = e.height;
+		value_mask |= CWHeight;
+	}
+	if (e.value_mask & CWBorderWidth) {
+		wc.border_width = e.border_width;
+		value_mask |= CWBorderWidth;
+	}
+
 	if (node) {
 		client_t *c = node->c;
-		if (c->frame) {
-			// 处理位置和大小的请求
-			if (e.value_mask & CWX) {
-				wc.x = 0;
-				value_mask |= CWX;
-			}
-			if (e.value_mask & CWY) {
-				wc.y = TITLE_BAR_HEIGHT;
-				value_mask |= CWY;
-			}
-			if (e.value_mask & CWWidth) {
-				wc.width = e.width;
-				value_mask |= CWWidth;
-			}
-			if (e.value_mask & CWHeight) {
-				wc.height = e.height;
-				value_mask |= CWHeight;
-			}
-			if (e.value_mask & CWBorderWidth) {
-				wc.border_width = e.border_width;
-				value_mask |= CWBorderWidth;
-			}
+		if (c && c->frame) {
+			int sw = SCREEN_WIDTH(display);
+			int sh = SCREEN_HEIGHT(display);
 
-			XResizeWindow(
+			c->width = e.width;
+			c->height = e.height + TITLE_BAR_HEIGHT;
+			c->x = (sw - BORDER * 2) / 2 - c->width / 2;
+			c->y = (sh - BORDER * 2) / 2 - c->height / 2;
+			XMoveResizeWindow(
 				display,
 				c->frame,
-				e.width,
-				e.height + TITLE_BAR_HEIGHT);
-		}
-	} else {
-		// 处理位置和大小的请求
-		if (e.value_mask & CWX) {
-			wc.x = e.x;
-			value_mask |= CWX;
-		}
-		if (e.value_mask & CWY) {
-			wc.y = e.y;
-			value_mask |= CWY;
-		}
-		if (e.value_mask & CWWidth) {
-			wc.width = e.width;
-			value_mask |= CWWidth;
-		}
-		if (e.value_mask & CWHeight) {
-			wc.height = e.height;
-			value_mask |= CWHeight;
-		}
-		if (e.value_mask & CWBorderWidth) {
-			wc.border_width = e.border_width;
-			value_mask |= CWBorderWidth;
+				c->x,
+				c->y,
+				c->width,
+				c->height);
 		}
 	}
+
 	XConfigureWindow(display, w, value_mask, &wc);
 
-	EASYWM_LOG_DEBUG("wc.x: %d, wc.y: %d, wc.width: %d, wc.height: %d",
-			wc.x, wc.y, wc.width, wc.height);
+	EASYWM_LOG_DEBUG("node: %p, wc.x: %d, wc.y: %d, wc.width: %d, wc.height: %d",
+			 node, wc.x, wc.y, wc.width, wc.height);
 
 	// 发送 ConfigureNotify 事件
 	XEvent configure_notify;
@@ -238,12 +243,40 @@ static void handle_configurerequest(Display *display, XConfigureRequestEvent e,
 	XSendEvent(display, w, False, StructureNotifyMask,
 		&configure_notify);
 
-	/* XMoveWindow(display, w, */
-	/* 	    sw / 2 - e.width / 2, */
-	/* 	    sh / 2 - e.height / 2); */
 	XSync(display, False);
 
 	EASYWM_LOG_DEBUG("Called :)");
+}
+
+void toggle_max(int argc, char *argv[]) {
+	assert(argc == 2 && argv[0] && argv[1]);
+
+	Display *display = (Display *) argv[0];
+	int sw = SCREEN_WIDTH(display);
+	int sh = SCREEN_HEIGHT(display);
+	for (client_node_t *it = (client_node_t *) argv[1]; it != NULL; it = it->next) {
+		if (it && it->c && it->c->focus) {
+			if (!it->c->max) {
+				it->c->x = 0;
+				it->c->y = 0;
+				it->c->width = sw - BORDER * 2;
+				it->c->height = sh - BORDER * 2;
+				XMoveResizeWindow(display, it->c->frame, it->c->x, it->c->y, it->c->width, it->c->height);
+				XMoveResizeWindow(display, it->c->w, 0, TITLE_BAR_HEIGHT, it->c->width, it->c->height - TITLE_BAR_HEIGHT);
+				it->c->max = 1;
+			} else {
+				it->c->x = 0;
+				it->c->y = 0;
+				it->c->width = 800;
+				it->c->height = 600;
+				XMoveResizeWindow(display, it->c->frame, 0, 0, 800, 600);
+				XMoveResizeWindow(display, it->c->w, 0, TITLE_BAR_HEIGHT, 800, 600 - TITLE_BAR_HEIGHT);
+				it->c->max = 0;
+			}
+
+			XSync(display, False);
+		}
+	}
 }
 
 int main(int argc, char *argv[]) {
@@ -278,7 +311,7 @@ int main(int argc, char *argv[]) {
 		     SubstructureNotifyMask);
 
 	XUngrabKey(display, AnyKey, AnyModifier, root);
-	for (int i = 0; i < UTILS_ARRAY_LEN(shortcuts); i++) {
+	for (int i = 0; i < ARRAY_LEN(shortcuts); i++) {
 		KeyCode code = XKeysymToKeycode(display, shortcuts[i].key);
 		if (code) {
 			XGrabKey(display, code, shortcuts[i].modifer, root,
@@ -335,8 +368,8 @@ int main(int argc, char *argv[]) {
 				node->c->y += dy;
 
 				XMoveWindow(display, node->c->frame,
-					node->c->x,
-					node->c->y);
+					    node->c->x,
+					    node->c->y);
 
 				XSync(display, False);
 			}
@@ -457,18 +490,12 @@ int main(int argc, char *argv[]) {
 		}
 		case KeyRelease: {
 			XKeyReleasedEvent e = event.xkey;
-			for (int i = 0; i < UTILS_ARRAY_LEN(shortcuts); i++) {
+			for (int i = 0; i < ARRAY_LEN(shortcuts); i++) {
 				KeySym keysym = XLookupKeysym(&e, 0);
 				if (shortcuts[i].key == keysym &&
 				    shortcuts[i].modifer == e.state) {
-					for (client_node_t *it = list; it != NULL; it = it->next) {
-						if (it && it->c && it->c->focus) {
-							XMoveResizeWindow(display, it->c->frame, 0, 0, 1920, 1080);
-							XMoveResizeWindow(display, it->c->w, 0, TITLE_BAR_HEIGHT, 1920, 1080 - TITLE_BAR_HEIGHT);
-
-							XSync(display, False);
-						}
-					}
+					char *argv[] = { (char *) display, (char *) list };
+					shortcuts[i].func(ARRAY_LEN(argv), argv);
 					break;
 				}
 			}

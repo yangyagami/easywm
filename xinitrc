@@ -1,3 +1,3 @@
-hmcl &
+st &
 
-startxfce4
+./easywm
