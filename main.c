@@ -100,7 +100,7 @@ static void focus_window(Display *display, client_t *c, int focus) {
 		c->focus = 1;
 
 		XSetInputFocus(display, c->w,
-			RevertToParent, CurrentTime);
+			       RevertToParent, CurrentTime);
 
 		XRaiseWindow(display, c->frame);
 	} else {
@@ -188,8 +188,6 @@ static void handle_maprequest(Display *display, XMapRequestEvent *e,
 					wx, wy, ww, wh, current_workspace);
 
 	easywm_client_list_append(list, c);
-
-	XSelectInput(display, w, EnterWindowMask | LeaveWindowMask);
 
 	XMapWindow(display, w);
 
@@ -353,6 +351,8 @@ int main(int argc, char *argv[]) {
 		XEvent event;
 		XNextEvent(display, &event);
 
+		/* EASYWM_LOG_DEBUG("Event: %d",event.type); */
+
 		switch (event.type) {
 		case ClientMessage:
 			break;
@@ -402,12 +402,12 @@ int main(int argc, char *argv[]) {
 			client_node_t *node = easywm_client_has_window(list,
 								       e.window);
 
-			EASYWM_LOG_DEBUG("List size: %d",
-					 easywm_client_list_size(list));
+			EASYWM_LOG_DEBUG("List size: %d, root: %lu",
+					 easywm_client_list_size(list), e.root);
 			for (client_node_t *it = list; it != NULL; it = it->next) {
 				if (it->c) {
 					if (it == node) {
-						focus_window(display, node->c, 1);
+						focus_window(display, it->c, 1);
 
 						XSync(display, False);
 					} else {
@@ -435,6 +435,7 @@ int main(int argc, char *argv[]) {
 			XUnmapEvent e = event.xunmap;
 			client_node_t *node = easywm_client_has_window(list,
 								       e.window);
+			EASYWM_LOG_DEBUG("Node: %p", node);
 			if (node && node->c) {
 				node->c->hide = 1;
 			}

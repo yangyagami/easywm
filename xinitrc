@@ -1,3 +1,3 @@
-emacs &
+st &
 
 ./easywm
