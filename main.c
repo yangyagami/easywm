@@ -26,6 +26,7 @@
 		__FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);
 
 void toggle_max(int argc, char *argv[]);
+void spawn(int argc, char *argv[]);
 
 #include "config.h"
 
@@ -48,8 +49,31 @@ static Window create_bar(Display *display) {
 	return bar;
 }
 
+static void resize_client(Display *display, client_t *c,
+			  int width, int height) {
+	assert(display && c);
+
+	if (c->frame) {
+		int sw = SCREEN_WIDTH(display);
+		int sh = SCREEN_HEIGHT(display);
+
+		c->width = width;
+		c->height = height;
+		c->x = (sw - BORDER * 2) / 2 - c->width / 2;
+		c->y = (sh - BORDER * 2) / 2 - c->height / 2;
+		XMoveResizeWindow(
+			display,
+			c->frame,
+			c->x,
+			c->y,
+			c->width,
+			c->height);
+		XResizeWindow(display, c->w, c->width, c->height - TITLE_BAR_HEIGHT);
+	}
+}
+
 static void focus_window(Display *display, client_t *c, int focus) {
-	assert(c != NULL);
+	assert(display && c);
 
 	if (c->hide) {
 		return;
@@ -203,30 +227,21 @@ static void handle_configurerequest(Display *display, XConfigureRequestEvent e,
 		value_mask |= CWBorderWidth;
 	}
 
+	EASYWM_LOG_DEBUG("node: %p, wc.x: %d, wc.y: %d, wc.width: %d, wc.height: %d, value_mask: %d",
+			node, wc.x, wc.y, wc.width, wc.height, value_mask);
+
+	if (value_mask == 0) {
+		return;
+	}
+
 	if (node) {
 		client_t *c = node->c;
 		if (c && c->frame) {
-			int sw = SCREEN_WIDTH(display);
-			int sh = SCREEN_HEIGHT(display);
-
-			c->width = e.width;
-			c->height = e.height + TITLE_BAR_HEIGHT;
-			c->x = (sw - BORDER * 2) / 2 - c->width / 2;
-			c->y = (sh - BORDER * 2) / 2 - c->height / 2;
-			XMoveResizeWindow(
-				display,
-				c->frame,
-				c->x,
-				c->y,
-				c->width,
-				c->height);
+			resize_client(display, c, e.width, e.height + TITLE_BAR_HEIGHT);
 		}
 	}
 
 	XConfigureWindow(display, w, value_mask, &wc);
-
-	EASYWM_LOG_DEBUG("node: %p, wc.x: %d, wc.y: %d, wc.width: %d, wc.height: %d",
-			 node, wc.x, wc.y, wc.width, wc.height);
 
 	// 发送 ConfigureNotify 事件
 	XEvent configure_notify;
@@ -277,6 +292,12 @@ void toggle_max(int argc, char *argv[]) {
 			XSync(display, False);
 		}
 	}
+}
+
+void spawn(int argc, char *argv[]) {
+	assert(argc > 0 && argv);
+
+	system("st &");
 }
 
 int main(int argc, char *argv[]) {

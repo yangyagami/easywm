@@ -21,6 +21,7 @@ static const int MODKEY = Mod4Mask;
 
 static const shortcut_t shortcuts[] = {
 	{ MODKEY, XK_f, toggle_max },
+	{ MODKEY, XK_Return, spawn, {"st"} },
 };
 
 #endif  // EASYWM_CONFIG_H_

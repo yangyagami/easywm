@@ -7,7 +7,6 @@ struct shortcut {
 	int modifer;
 	KeySym key;
 	void (*func)(int argc, char *argv[]);
-        int argc;
 	char *argv[30];
 };
 typedef struct shortcut shortcut_t;
