@@ -49,6 +49,21 @@ static Window create_bar(Display *display) {
 	return bar;
 }
 
+static void show_client(Display *display, client_t *c, int show) {
+	if (show && c->hide) {
+		if (c->frame) {
+			XMapWindow(display, c->frame);
+			c->hide = 0;
+		}
+	}
+	if (!show && !c->hide) {
+		if (c->frame) {
+			XUnmapWindow(display, c->frame);
+			c->hide = 1;
+		}
+	}
+}
+
 static void resize_client(Display *display, client_t *c,
 			  int width, int height) {
 	assert(display && c);
@@ -72,7 +87,7 @@ static void resize_client(Display *display, client_t *c,
 	}
 }
 
-static void focus_window(Display *display, client_t *c, int focus) {
+static void focus_client(Display *display, client_t *c, int focus) {
 	assert(display && c);
 
 	if (c->hide) {
@@ -108,6 +123,18 @@ static void focus_window(Display *display, client_t *c, int focus) {
 	}
 }
 
+static void grab_keys(Display *display) {
+	Window root = DefaultRootWindow(display);
+	XUngrabKey(display, AnyKey, AnyModifier, root);
+	for (int i = 0; i < ARRAY_LEN(shortcuts); i++) {
+		KeyCode code = XKeysymToKeycode(display, shortcuts[i].key);
+		if (code) {
+			XGrabKey(display, code, shortcuts[i].modifer, root,
+				True, GrabModeAsync, GrabModeAsync);
+		}
+	}
+}
+
 static void handle_maprequest(Display *display, XMapRequestEvent *e,
 			      client_node_t *list) {
 	Window w = e->window;
@@ -119,7 +146,7 @@ static void handle_maprequest(Display *display, XMapRequestEvent *e,
 
 	for (client_node_t *it = list; it != NULL; it = it->next) {
 		if (it->c) {
-			focus_window(display, it->c, 0);
+			focus_client(display, it->c, 0);
 		}
 	}
 
@@ -194,6 +221,8 @@ static void handle_maprequest(Display *display, XMapRequestEvent *e,
 	XSetInputFocus(display, w, RevertToPointerRoot, CurrentTime);
 
 	XSync(display, False);
+
+	EASYWM_LOG_DEBUG("Window: %lu, frame: %lu", w, frame);
 }
 
 static void handle_configurerequest(Display *display, XConfigureRequestEvent e,
@@ -202,6 +231,8 @@ static void handle_configurerequest(Display *display, XConfigureRequestEvent e,
 	XWindowChanges wc;
 	unsigned int value_mask = 0;
 	client_node_t *node = easywm_client_has_window(list, w);
+
+	EASYWM_LOG_DEBUG("Window: %lu", w);
 
 	// 处理位置和大小的请求
 	if (e.value_mask & CWX) {
@@ -329,14 +360,7 @@ int main(int argc, char *argv[]) {
 		     KeyReleaseMask |
 		     SubstructureNotifyMask);
 
-	XUngrabKey(display, AnyKey, AnyModifier, root);
-	for (int i = 0; i < ARRAY_LEN(shortcuts); i++) {
-		KeyCode code = XKeysymToKeycode(display, shortcuts[i].key);
-		if (code) {
-			XGrabKey(display, code, shortcuts[i].modifer, root,
-				True, GrabModeAsync, GrabModeAsync);
-		}
-	}
+	grab_keys(display);
 
 	create_bar(display);
 
@@ -364,13 +388,26 @@ int main(int argc, char *argv[]) {
 			client_node_t *node = easywm_client_has_window(list,
 								       e.window);
 
+			EASYWM_LOG_DEBUG("Node: %p, window: %lu", node, e.window);
 			if (node && node->c) {
 				XDestroyWindow(display, node->c->frame);
-				XSync(display, False);
 				easywm_client_list_remove(list, node);
 				EASYWM_LOG_DEBUG("After remove, List size: %d",
 						 easywm_client_list_size(list));
+			} else {
+				break;
 			}
+
+			client_node_t *last = easywm_client_list_last(list);
+			if (last && last->c) {
+				EASYWM_LOG_DEBUG("Auto focus on last client");
+				focus_client(display, last->c, 1);
+			} else {
+				XSetInputFocus(display, root, RevertToParent, CurrentTime);
+			}
+			grab_keys(display);
+
+			XSync(display, False);
 			break;
 		}
 		case MapNotify:
@@ -407,11 +444,11 @@ int main(int argc, char *argv[]) {
 			for (client_node_t *it = list; it != NULL; it = it->next) {
 				if (it->c) {
 					if (it == node) {
-						focus_window(display, it->c, 1);
+						focus_client(display, it->c, 1);
 
 						XSync(display, False);
 					} else {
-						focus_window(display, it->c, 0);
+						focus_client(display, it->c, 0);
 
 						XSync(display, False);
 					}
@@ -435,9 +472,9 @@ int main(int argc, char *argv[]) {
 			XUnmapEvent e = event.xunmap;
 			client_node_t *node = easywm_client_has_window(list,
 								       e.window);
-			EASYWM_LOG_DEBUG("Node: %p", node);
+			EASYWM_LOG_DEBUG("Node: %p, window: %lu", node, e.window);
 			if (node && node->c) {
-				node->c->hide = 1;
+				show_client(display, node->c, 0);
 			}
 			break;
 		}
@@ -490,7 +527,7 @@ int main(int argc, char *argv[]) {
 				mouse_move_start_x = e.x;
 				mouse_move_start_y = e.y;
 
-				focus_window(display, node->c, 1);
+				focus_client(display, node->c, 1);
 			}
 
 			XRaiseWindow(display, e.window);

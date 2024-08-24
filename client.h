@@ -34,6 +34,7 @@ client_node_t *easywm_client_list_new(void);
 void easywm_client_list_destroy(client_node_t *list);
 void easywm_client_list_append(client_node_t *list, client_t *c);
 void easywm_client_list_remove(client_node_t *list, client_node_t *node);
+client_node_t *easywm_client_list_last(client_node_t *list);
 int easywm_client_list_size(client_node_t *list);
 client_node_t *easywm_client_has_window(client_node_t *list, Window w);
 

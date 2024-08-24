@@ -83,6 +83,13 @@ client_node_t *easywm_client_has_window(client_node_t *list, Window w) {
 	return NULL;
 }
 
+client_node_t *easywm_client_list_last(client_node_t *list) {
+	client_node_t *ret = list;
+	for (ret = list; ret != NULL && ret->next != NULL; ret = ret->next);
+
+	return ret;
+}
+
 int easywm_client_list_size(client_node_t *list) {
 	int ret = 0;
 	for (client_node_t *it = list; it != NULL; it = it->next) {
