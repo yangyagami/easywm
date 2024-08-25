@@ -18,6 +18,7 @@ void spawn(int argc, char *argv[]);
 #include "config.h"
 
 static int current_workspace = 1;
+static client_node_t *list = NULL;
 
 static Window create_bar(Display *display) {
 	int screen = DefaultScreen(display);
@@ -122,8 +123,7 @@ static void grab_keys(Display *display) {
 	}
 }
 
-static void handle_maprequest(Display *display, XMapRequestEvent *e,
-			      client_node_t *list) {
+static void handle_maprequest(Display *display, XMapRequestEvent *e) {
 	Window w = e->window;
 
 	if (easywm_client_has_window(list, w)) {
@@ -212,8 +212,7 @@ static void handle_maprequest(Display *display, XMapRequestEvent *e,
 	EASYWM_LOG_DEBUG("Window: %lu, frame: %lu", w, frame);
 }
 
-static void handle_configurerequest(Display *display, XConfigureRequestEvent e,
-				    client_node_t *list) {
+static void handle_configurerequest(Display *display, XConfigureRequestEvent e) {
 	Window w = e.window;
 	XWindowChanges wc;
 	unsigned int value_mask = 0;
@@ -358,7 +357,7 @@ int main(int argc, char *argv[]) {
 
 	XSync(display, False);
 
-	client_node_t *list = easywm_client_list_new();
+	list = easywm_client_list_new();
 
 	int mouse_move_start_x = 0;
 	int mouse_move_start_y = 0;
@@ -473,7 +472,7 @@ int main(int argc, char *argv[]) {
 
 		case MapRequest: {
 			XMapRequestEvent e = event.xmaprequest;
-			handle_maprequest(display, &e, list);
+			handle_maprequest(display, &e);
 			/* Window w = e.window; */
 			/* XSizeHints hints; */
 			/* long supplied; */
@@ -507,7 +506,7 @@ int main(int argc, char *argv[]) {
 		}
 		case ConfigureRequest: {
 			XConfigureRequestEvent e = event.xconfigurerequest;
-			handle_configurerequest(display, e, list);
+			handle_configurerequest(display, e);
 			break;
 		}
 		case ButtonPress: {

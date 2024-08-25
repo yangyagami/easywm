@@ -9,6 +9,8 @@
 
 * DOING client 相关方法放在 client.h 里。
 * DOING config.h 重构。
+- [] 将快捷键相关方法移动到 key.h 里。
+
 * DOING shortcut 回调重构。
 
 * DONE client 最大化时不应该可以移动。
