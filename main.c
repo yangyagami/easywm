@@ -64,6 +64,8 @@ static void resize_client(Display *display, client_t *c,
 		c->height = height;
 		c->x = (sw - BORDER * 2) / 2 - c->width / 2;
 		c->y = (sh - BORDER * 2) / 2 - c->height / 2;
+		EASYWM_LOG_DEBUG("Width: %d, height: %d, x: %d, y: %d",
+				 c->width, c->height, c->x, c->y);
 		XMoveResizeWindow(
 			display,
 			c->frame,
@@ -142,7 +144,7 @@ static void handle_maprequest(Display *display, XMapRequestEvent *e) {
 
 	XGetWMNormalHints(display, w, &hints, &supplied);
 
-	EASYWM_LOG_DEBUG("width: %d, height: %d, min width: %d, min height: %d, max width: %d, max height: %d, base width: %d, base height: %d",
+	EASYWM_LOG_DEBUG("hints.width: %d, hints.height: %d, min width: %d, min height: %d, max width: %d, max height: %d, base width: %d, base height: %d",
 			hints.width, hints.height,
 			hints.min_width, hints.min_height,
 			hints.max_width, hints.max_height,
@@ -222,11 +224,11 @@ static void handle_configurerequest(Display *display, XConfigureRequestEvent e) 
 
 	// 处理位置和大小的请求
 	if (e.value_mask & CWX) {
-		wc.x = e.x;
+		wc.x = 0;
 		value_mask |= CWX;
 	}
 	if (e.value_mask & CWY) {
-		wc.y = e.y;
+		wc.y = TITLE_BAR_HEIGHT;
 		value_mask |= CWY;
 	}
 	if (e.value_mask & CWWidth) {
