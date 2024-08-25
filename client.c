@@ -9,12 +9,15 @@ client_t *easywm_client_new(Window w, Window frame,
 			    int workspace) {
 	client_t *c = NULL;
 	c = (client_t *) calloc(1, sizeof(*c));
+
 	c->w = w;
 	c->frame = frame;
+
 	c->x = x;
 	c->y = y;
 	c->width = width;
 	c->height = height;
+
 	c->workspace = workspace;
 	return c;
 }

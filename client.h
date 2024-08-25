@@ -4,8 +4,6 @@
 #include <X11/Xlib.h>
 
 struct client {
-	Window w;
-	Window frame;
 	int moving;
 
 	// Contains frame
@@ -16,6 +14,9 @@ struct client {
 	int hide;
 	int focus;
 	int max;
+
+	Window w;
+	Window frame;
 };
 typedef struct client client_t;
 

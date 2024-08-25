@@ -1,3 +1,3 @@
-rpcs3 &
+st &
 
 ./easywm

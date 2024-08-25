@@ -1,0 +1,11 @@
+* 介绍
+easywm 是一个简单的用纯 C 基于 Xlib 实现的 Linux 窗口管理器。
+
+* 构建
+#+begin_src sh
+make
+./preview.sh
+#+end_src
+
+* 截图
+[[file:2024-08-25_10-38.png]]

@@ -8,22 +8,9 @@
 #include "client.h"
 #include "key.h"
 #include "utils.h"
+#include "global.h"
 
-#define EASYWM_LOG_ERROR(msg, ...) \
-	fprintf(stderr, "[%s][%s][%d] Error: "msg"\n", \
-		__FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);
-
-#define EASYWM_LOG_INFO(msg, ...) \
-	fprintf(stdout, "[%s][%s][%d] Info: "msg"\n", \
-		__FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);
-
-#define EASYWM_LOG_DEBUG(msg, ...) \
-	fprintf(stdout, "[%s][%s][%d] Debug: "msg"\n", \
-		__FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);
-
-#define EASYWM_LOG_WARN(msg, ...) \
-	fprintf(stdout, "[%s][%s][%d] Warn: "msg"\n", \
-		__FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);
+global_t global = { 0 };
 
 void toggle_max(int argc, char *argv[]);
 void spawn(int argc, char *argv[]);
@@ -342,6 +329,11 @@ int main(int argc, char *argv[]) {
         Colormap colormap = DefaultColormap(display, 0);
 	XColor root_bgcolor;
 
+	// 初始化 global
+	global.display = display;
+	global.root = root;
+	global.colormap = colormap;
+
 	// 分配颜色
 	if (!XAllocNamedColor(display, colormap, "skyblue",
 			      &root_bgcolor, &root_bgcolor)) {
@@ -418,7 +410,7 @@ int main(int argc, char *argv[]) {
 			XButtonPressedEvent e = event.xbutton;
 			client_node_t *node = easywm_client_has_window(list,
 								       e.window);
-			if (node && node->c && node->c->moving) {
+			if (node && node->c && node->c->moving && !node->c->max) {
 				int dx = e.x - mouse_move_start_x;
 				int dy = e.y - mouse_move_start_y;
 
@@ -571,8 +563,3 @@ int main(int argc, char *argv[]) {
 	XCloseDisplay(display);
 	return 0;
 }
-
-#undef EASYWM_LOG_ERROR
-#undef EASYWM_LOG_INFO
-#undef EASYWM_LOG_DEBUG
-#undef EASYWM_LOG_WARN

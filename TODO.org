@@ -3,10 +3,15 @@
 * TODO 平铺布局？
 * TODO 一些自定义窗口不需要 frame，例如 hmcl 。
 * TODO BAR 的实现。
-* TODO shortcut 回调重构。
+* TODO client 实现 resize 大小限制。
+* TODO 执行程序的功能（dwm 的 spawn）。
+* TODO 不同窗口类型做不同处理。
 
-* DOING 执行程序的功能（dwm 的 spawn）。
-* DOING 统一大小计算方法。
-* DOING 处理全屏时的位置和大小问题，应该计算上 border 的宽度。
+* DOING client 相关方法放在 client.h 里。
+* DOING config.h 重构。
+* DOING shortcut 回调重构。
 
+* DONE client 最大化时不应该可以移动。
+* DONE 处理全屏时的位置和大小问题，应该计算上 border 的宽度。
+* DONE 统一大小计算方法。
 * DONE 实现 client 的 show/hide 方法。
